@@ -1,6 +1,7 @@
 import numpy as np
 import pickle
 import matplotlib.pyplot as plt
+import Network
 
 np.random.seed(111)
 
@@ -77,9 +78,22 @@ def prepare_data(train_path, val_path, test_path):
 
 if __name__ == '__main__':
 
+
+    #a = [[1, 2], [-1, 1]]
+    #b = np.random.binomial(n=1, p=0.5, size=4)
+    #print(b)
+
     train = "/home/idan/Desktop/studies/bio_intelligent_models/ex1/cifar-10-batches-py/data_batch_1"
     val = "/home/idan/Desktop/studies/bio_intelligent_models/ex1/cifar-10-batches-py/data_batch_2"
     test = "/home/idan/Desktop/studies/bio_intelligent_models/ex1/cifar-10-batches-py/test_batch"
     X_train, Y_train, X_val, Y_val, X_test, Y_test = prepare_data(train, val, test)
 
+    layers = [3, 3, 2, 1]
+    initial_lr = 0.001
+    reg = 0.005
+    dropout = [0.3, 0.3, 0.0]
+    activations_func = ["relu", "tanh", "linear"]
+    model = Network.Fully_Connected(layers, initial_lr, reg, dropout, activations_func)
+    example = np.random.rand(3, 2)
+    model.forward(example)
 
