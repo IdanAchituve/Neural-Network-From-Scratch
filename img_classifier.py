@@ -88,12 +88,15 @@ if __name__ == '__main__':
     test = "/home/idan/Desktop/studies/bio_intelligent_models/ex1/cifar-10-batches-py/test_batch"
     X_train, Y_train, X_val, Y_val, X_test, Y_test = prepare_data(train, val, test)
 
-    layers = [3, 3, 2, 1]
+    layers = [5, 4, 3, 2]
     initial_lr = 0.001
     reg = 0.005
     dropout = [0.3, 0.3, 0.0]
-    activations_func = ["relu", "tanh", "linear"]
+    activations_func = ["relu", "relu", "softmax"]
     model = Network.Fully_Connected(layers, initial_lr, reg, dropout, activations_func)
-    example = np.random.rand(3, 2)
-    model.forward(example)
+    example = np.random.rand(5, 3)
+    labels = np.asarray([[1, 0], [0, 1], [1, 0]]).transpose()
+    out = model.forward(example)
+    a, b = model.loss_function(out, labels)
+    model.backward(out, labels)
 
