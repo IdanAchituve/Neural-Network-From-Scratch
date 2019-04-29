@@ -75,6 +75,46 @@ def prepare_data(train_path, val_path, test_path):
     return X_train_gray_vec, Y_train, X_val_gray_vec, Y_val, X_test_gray_vec, Y_test
 
 
+def gradient_check(model, x, y):
+
+    grads = model.get_grads()
+    params = model.get_params()
+
+    eps = 0.00001
+
+    for layer in range(len(params)):
+        for src_neuron in range(np.size(params[layer], 0)):
+            for dst_neuron in range(np.size(params[layer], 1)):
+
+                param_val = params[layer][src_neuron, dst_neuron].copy()
+                grad_val = grads[layer][src_neuron, dst_neuron].copy()
+
+                # compute (loss) function value of epsilon addition to one of the parameters
+                model.init_vals()
+                model.set_param(layer, src_neuron, dst_neuron, param_val + eps)
+                out = model.forward(x)
+                upper_val = model.loss_function(out, y)
+
+                # compute (loss) function value of epsilon reduction from one of the parameters
+                model.init_vals()
+                model.set_param(layer, src_neuron, dst_neuron, param_val - 2*eps)  # multiply by 2 because the current value is w + epslion
+                out = model.forward(x)
+                lower_val = model.loss_function(out, y)
+
+                # return to original state
+                model.init_vals()
+                model.set_param(layer, src_neuron, dst_neuron, param_val)
+
+                numeric_grad = (upper_val - lower_val)/(2*eps)
+
+                # Compare gradients
+                reldiff = abs(numeric_grad - grad_val) / max(1, abs(numeric_grad), abs(grad_val))
+                if reldiff > 1e-5:
+                    print("Gradient check failed")
+                    exit()
+    print("Gradient check passed")
+
+
 
 if __name__ == '__main__':
 
@@ -88,15 +128,16 @@ if __name__ == '__main__':
     test = "/home/idan/Desktop/studies/bio_intelligent_models/ex1/cifar-10-batches-py/test_batch"
     X_train, Y_train, X_val, Y_val, X_test, Y_test = prepare_data(train, val, test)
 
-    layers = [5, 4, 3, 2]
-    initial_lr = 0.001
-    reg = 0.005
-    dropout = [0.3, 0.3, 0.0]
-    activations_func = ["relu", "relu", "softmax"]
-    model = Network.Fully_Connected(layers, initial_lr, reg, dropout, activations_func)
-    example = np.random.rand(5, 3)
-    labels = np.asarray([[1, 0], [0, 1], [1, 0]]).transpose()
+    layers = [2, 2, 2]
+    initial_lr = 1
+    reg = 0
+    dropout = [0.0, 0.0, 0.0]
+    activations_func = ["relu", "softmax"]
+    model = Network.Fully_Connected(layers, initial_lr, reg, dropout, activations_func, "L2")
+    example = np.asarray([[1], [3]])
+    labels = np.asarray([[1, 0]]).transpose()
     out = model.forward(example)
-    a, b = model.loss_function(out, labels)
+    a = model.loss_function(out, labels)
     model.backward(out, labels)
+    gradient_check(model, example, labels)
 

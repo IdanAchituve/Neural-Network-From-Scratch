@@ -8,7 +8,7 @@ INIT_STD = 0.01
 
 class Fully_Connected:
 
-    def __init__(self, layers, initial_lr, reg, dropout, activations_func):
+    def __init__(self, layers, initial_lr, reg, dropout, activations_func, reg_type):
         self.lr = initial_lr  # learning rate
         self.reg = reg  # lambda
         self.dropout = dropout  # a list of dropout probability per layer
@@ -16,6 +16,7 @@ class Fully_Connected:
         self.activation_functions = activations_func  # list of activation functions
         self.is_train = True
         self.activations = []
+        self.reg_type = reg_type
 
         # data structures for saving weights and gradients of each layer
         self.weights = [np.random.normal(INIT_MEAN, INIT_STD, (prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(layers, layers[1:])]
@@ -55,33 +56,55 @@ class Fully_Connected:
 
     def backward(self, net_out, labels):
 
+        # activations point derivative
         def dactivation_dz(layer, activation_val):
             if self.activation_functions[layer] == "tanh":
                 return 1 - np.tanh(activation_val) ** 2
-            if self.activation_functions[layer] == "relu":
-                return activation_val
+            elif self.activation_functions[layer] == "relu":
+                dactivation = activation_val.copy()
+                dactivation[dactivation <= 0] = 0
+                dactivation[dactivation > 0] = 1
+                return dactivation
 
         batch_size = np.size(labels, 1)
-        dL_da = []
-
-        for layer in range(len(self.layers), 0, -1):
-            for example_idx in range(batch_size):
-                if layer == len(self.layers) - 1:
-                    delta = (net_out[:, example_idx] - labels[:, example_idx])
+        # for each example in the batch sum gradients on all layers
+        for example_idx in range(batch_size):
+            dL_da = [0] * (len(self.layers) - 1)
+            for layer in range(len(self.layers) - 2, -1, -1):
+                # delta = dL/da * da/dz
+                if layer == len(self.layers) - 2:
+                    delta = (net_out[:, example_idx] - labels[:, example_idx]).reshape(1, -1)
                 else:
-                    delta = dL_da[example_idx] * dactivation_dz(layer, self.activations[layer][:, example_idx])
-                prev_act = self.activations[layer - 1][:, example_idx].transpose()
-                self.grads[layer] += np.dot(delta, prev_act)  # dL/dw = (a_m - T)*a_m-1^T
-                dL_da.append(np.dot(self.weights[layer].transpose(), delta))  # dL/d(a_m-1) = w_m^T*(a_m - T)
-            self.grads[layer] += self.reg*self.weights[layer]  # add regularization
+                    delta = dL_da[layer + 1] * dactivation_dz(layer, self.activations[layer + 1][1:, example_idx])
+                    delta = delta.reshape(1, -1)
+                prev_act = self.activations[layer][:, example_idx].reshape(-1, 1)  # get activation of the 1st layer
+                self.grads[layer] += np.dot(prev_act, delta)  # dL/dw = (a_m - T)*a_m-1^T
+                dL_da[layer] = np.dot(delta, self.weights[layer][1:].transpose())  # dL/d(a_m-1) = w_m^T*(a_m - T)
 
-    # return the sum and average of losses per batch
+        # add derivative of regularization
+        for layer in range(len(self.layers) - 2, 0, -1):
+            if self.reg_type == "L2":
+                dreg = self.weights[layer]
+            else:
+                dreg = self.weights[layer].copy()
+                dreg[dreg < 0] = -1.0
+                dreg[dreg > 0] = 1.0
+
+            # average gradients
+            self.grads[layer] = self.grads[layer] / batch_size
+            # add regularization
+            self.grads[layer] += self.reg*dreg
+
+    # return the average of losses per batch
     def loss_function(self, net_out, labels):
         sum_weights = 0.0
         for l in range(len(self.layers) - 1):
-            sum_weights += np.sum(self.weights[l] ** 2)  # L2 loss proportional to the loss value
-        loss = np.sum(net_out * labels, axis=0) + self.reg*sum_weights
-        return np.sum(loss), np.average(loss)
+            # L2 regularization proportional to the loss value
+            reg_term = np.sum(self.weights[l] ** 2) if self.reg_type == "L2" else np.sum(np.abs(self.weights[l]))
+            sum_weights += reg_term
+        loss = np.sum(net_out * labels, axis=0)
+        avg_loss = np.average(loss) + self.reg*sum_weights
+        return avg_loss
 
     def test_time(self):
         self.is_train = False
@@ -93,5 +116,14 @@ class Fully_Connected:
         self.activations = []
         self.grads = [np.zeros((prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
 
+    def step(self):
+        self.weights -= self.lr * self.grads
 
+    def get_grads(self):
+        return self.grads.copy()
 
+    def get_params(self):
+        return self.weights.copy()
+
+    def set_param(self, layer, src_neuron, dst_neuron, val):
+        self.weights[layer][src_neuron, dst_neuron] = val
