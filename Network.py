@@ -82,7 +82,7 @@ class Fully_Connected:
                 dL_da[layer] = np.dot(delta, self.weights[layer][1:].transpose())  # dL/d(a_m-1) = w_m^T*(a_m - T)
 
         # add derivative of regularization
-        for layer in range(len(self.layers) - 2, 0, -1):
+        for layer in range(len(self.layers) - 2, -1, -1):
             if self.reg_type == "L2":
                 dreg = self.weights[layer]
             else:
@@ -102,7 +102,7 @@ class Fully_Connected:
             # L2 regularization proportional to the loss value
             reg_term = np.sum(self.weights[l] ** 2) if self.reg_type == "L2" else np.sum(np.abs(self.weights[l]))
             sum_weights += reg_term
-        loss = np.sum(net_out * labels, axis=0)
+        loss = - np.log(np.sum(net_out * labels, axis=0))
         avg_loss = np.average(loss) + self.reg*sum_weights
         return avg_loss
 
@@ -112,9 +112,10 @@ class Fully_Connected:
     def train_time(self):
         self.is_train = True
 
-    def init_vals(self):
+    def init_vals(self, init_grads=False):
         self.activations = []
-        self.grads = [np.zeros((prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
+        if init_grads:
+            self.grads = [np.zeros((prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
 
     def step(self):
         self.weights -= self.lr * self.grads

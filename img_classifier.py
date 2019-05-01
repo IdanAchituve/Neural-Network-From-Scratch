@@ -86,6 +86,9 @@ def gradient_check(model, x, y):
         for src_neuron in range(np.size(params[layer], 0)):
             for dst_neuron in range(np.size(params[layer], 1)):
 
+                if layer == 1 and src_neuron == 0 and dst_neuron == 0:
+                    xxx = 1
+
                 param_val = params[layer][src_neuron, dst_neuron].copy()
                 grad_val = grads[layer][src_neuron, dst_neuron].copy()
 
@@ -97,7 +100,7 @@ def gradient_check(model, x, y):
 
                 # compute (loss) function value of epsilon reduction from one of the parameters
                 model.init_vals()
-                model.set_param(layer, src_neuron, dst_neuron, param_val - 2*eps)  # multiply by 2 because the current value is w + epslion
+                model.set_param(layer, src_neuron, dst_neuron, param_val - eps)  # multiply by 2 because the current value is w + epslion
                 out = model.forward(x)
                 lower_val = model.loss_function(out, y)
 
@@ -105,6 +108,7 @@ def gradient_check(model, x, y):
                 model.init_vals()
                 model.set_param(layer, src_neuron, dst_neuron, param_val)
 
+                vvv = upper_val - lower_val
                 numeric_grad = (upper_val - lower_val)/(2*eps)
 
                 # Compare gradients
@@ -132,9 +136,9 @@ if __name__ == '__main__':
     initial_lr = 1
     reg = 0
     dropout = [0.0, 0.0, 0.0]
-    activations_func = ["relu", "softmax"]
+    activations_func = ["tanh", "softmax"]
     model = Network.Fully_Connected(layers, initial_lr, reg, dropout, activations_func, "L2")
-    example = np.asarray([[1], [3]])
+    example = np.asarray([[0.1], [0.8]])
     labels = np.asarray([[1, 0]]).transpose()
     out = model.forward(example)
     a = model.loss_function(out, labels)
