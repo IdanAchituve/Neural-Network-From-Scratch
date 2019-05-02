@@ -1,7 +1,7 @@
 import numpy as np
-import pickle
 import matplotlib.pyplot as plt
 import Network
+import csv
 
 np.random.seed(111)
 
@@ -17,25 +17,17 @@ images_per_file = 10000
 
 def read_data(file):
 
-    with open(file, 'rb') as fo:
-        data = pickle.load(fo, encoding='bytes')
+    labels = []
+    images = []
+    with open(file) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        for row in csv_reader:
+            labels.append(row[0])
+            images.append(row[1:])
 
-    raw_images = data[b'data']
-    labels = np.array(data[b'labels'])
-    images = raw_images.reshape([-1, img_channels, img_size, img_size])
-    # move the channel dimension to the last
-    images = np.rollaxis(images, 1, 4)
-
+    labels = np.asarray(labels)
+    images = np.asarray(images)
     return images, labels
-
-
-def grayscale(data, dtype='float32'):
-    # luma coding weighted average in video systems
-    r, g, b = np.asarray([.3], dtype=dtype), np.asarray([.59], dtype=dtype), np.asarray([.11], dtype=dtype)
-    rst = r * data[:, :, :, 0] + g * data[:, :, :, 1] + b * data[:, :, :, 2]
-    # add channel dimension
-    rst = np.expand_dims(rst, axis=3)
-    return rst
 
 
 def print_img(X):
@@ -45,34 +37,6 @@ def print_img(X):
     plt.figure(figsize=(4, 2))
     plt.imshow(X[img, :, :, 0], cmap=plt.get_cmap('gray'), interpolation='none')
     plt.show()
-
-
-def prepare_data(train_path, val_path, test_path):
-
-    # read data
-    X_train, Y_train = read_data(train_path)
-    X_val, Y_val = read_data(val_path)
-    X_test, Y_test = read_data(test_path)
-
-    # scale data to 0-1 range
-    X_train = X_train.astype('float32')
-    X_val = X_val.astype('float32')
-    X_test = X_test.astype('float32')
-    X_train = X_train / 255.0
-    X_val = X_val / 255.0
-    X_test = X_test / 255.0
-
-    # convert to grayscale so there will be only one channel
-    X_train_gray = grayscale(X_train)
-    X_val_gray = grayscale(X_val)
-    X_test_gray = grayscale(X_test)
-
-    # convert back to vector to fit an input of FC network
-    X_train_gray_vec = X_train_gray.reshape([-1, 1 * img_size * img_size])
-    X_val_gray_vec = X_val_gray.reshape([-1, 1 * img_size * img_size])
-    X_test_gray_vec = X_test_gray.reshape([-1, 1 * img_size * img_size])
-
-    return X_train_gray_vec, Y_train, X_val_gray_vec, Y_val, X_test_gray_vec, Y_test
 
 
 def gradient_check(model, x, y):
@@ -119,19 +83,7 @@ def gradient_check(model, x, y):
     print("Gradient check passed")
 
 
-
-if __name__ == '__main__':
-
-
-    #a = [[1, 2], [-1, 1]]
-    #b = np.random.binomial(n=1, p=0.5, size=4)
-    #print(b)
-
-    train = "/home/idan/Desktop/studies/bio_intelligent_models/ex1/cifar-10-batches-py/data_batch_1"
-    val = "/home/idan/Desktop/studies/bio_intelligent_models/ex1/cifar-10-batches-py/data_batch_2"
-    test = "/home/idan/Desktop/studies/bio_intelligent_models/ex1/cifar-10-batches-py/test_batch"
-    X_train, Y_train, X_val, Y_val, X_test, Y_test = prepare_data(train, val, test)
-
+def temp():
     layers = [2, 2, 2]
     initial_lr = 1
     reg = 0
@@ -144,4 +96,42 @@ if __name__ == '__main__':
     a = model.loss_function(out, labels)
     model.backward(out, labels)
     gradient_check(model, example, labels)
+
+
+def train_model(model, nn_params, log, exp, train_path, val_path, test_path, save_logs):
+
+    epochs = nn_params["epochs"]
+    batch_size = nn_params["train_batch_size"]
+
+    # Initialize printing templates
+    per_log_template = '    '.join('{:05d},{:09.5f},{:09.5f},{:011.10f},{:011.10f}'.split(','))
+    header_template = ''.join('{:<9},{:<13},{:<13},{:<16},{:<11}'.split(','))
+    dev_pred_pref = "./logs/" + exp + "_predictions_validation.txt" if save_logs else None
+
+    log.log("Read Train Data")
+    X_train, Y_train = read_data(train_path)
+    log.log("Read Validation Data")
+    X_val, Y_val = read_data(val_path)
+
+
+    best_epoch = 0
+    best_PR = dev_roc = dev_loss = 0.0
+    log.log(header_template.format('Epoch', 'Trn_Loss', 'Trn_Acc', 'Dev_Loss', 'Dev_Acc'))
+
+
+
+
+    return model
+
+def classifier(nn_params, log, exp, train_path, val_path, test_path, save_logs):
+
+    model = Network.Fully_Connected(nn_params)
+    model = train_model(model, nn_params, log, exp, train_path, val_path, test_path, save_logs)
+
+    # test model here
+
+    X_test, Y_test = read_data(test_path)
+
+
+
 

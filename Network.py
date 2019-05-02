@@ -8,15 +8,17 @@ INIT_STD = 0.01
 
 class Fully_Connected:
 
-    def __init__(self, layers, initial_lr, reg, dropout, activations_func, reg_type):
-        self.lr = initial_lr  # learning rate
-        self.reg = reg  # lambda
-        self.dropout = dropout  # a list of dropout probability per layer
-        self.layers = layers  # list of layers size
-        self.activation_functions = activations_func  # list of activation functions
+    def __init__(self, nn_params):
+        self.lr = nn_params["lr"]  # learning rates
+        self.lr_decay = nn_params["lr_decay"]  # learning rate decay
+        self.reg = nn_params["reg_lambda"]  # lambda
+        self.reg_type = nn_params["reg_type"]
+        self.dropout = nn_params["dropout"]  # a list of dropout probability per layer
+        self.layers = nn_params["layers"]  # list of layers size
+        self.activation_functions = nn_params["activations"]  # list of activation functions
+
         self.is_train = True
         self.activations = []
-        self.reg_type = reg_type
 
         # data structures for saving weights and gradients of each layer
         self.weights = [np.random.normal(INIT_MEAN, INIT_STD, (prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(layers, layers[1:])]
