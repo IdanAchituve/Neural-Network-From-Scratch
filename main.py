@@ -1,23 +1,24 @@
 import logger
 import img_classifier
 import os
+import sys
 from time import gmtime, strftime
 
 
 # NN hyper-parameters
 nn_params = {}
-nn_params["lr"] = 0.0001
-nn_params["lr_decay"] = 0.0001  # learning rate decay factor
-nn_params["momentum"] = 0.9
-nn_params["reg_lambda"] = 0.0001  # regularization parameter
+nn_params["lr"] = 0.01
+nn_params["lr_decay"] = 0  # learning rate decay factor
+nn_params["momentum"] = 0.0
+nn_params["reg_lambda"] = 0.0  # regularization parameter
 nn_params["reg_type"] = "L2"  # regularization type
-nn_params["epochs"] = 2
-nn_params["train_batch_size"] = 2
-nn_params["test_batch_size"] = 4
+nn_params["epochs"] = 20
+nn_params["train_batch_size"] = 16
+nn_params["test_batch_size"] = 32
 nn_params["layers"] = [3072, 32, 10]  # MLP dims
 nn_params["activations"] = ['relu', 'softmax']  # tanh, relu or softmax
 nn_params["dropout"] = [0.0, 0.0, 0.0]  # dropout on each layer
-nn_params["z_scale"] = True
+nn_params["z_scale"] = False
 
 
 def print_data(log):
@@ -30,16 +31,16 @@ def print_data(log):
 
 if __name__ == '__main__':
 
-    save_logs = False  # user input
-    train_path = "./data/train.csv"  # user input
-    val_path = "./data/validate.csv"  # user input
-    test_path = "./data/test.csv"  # user input
+    save_logs = sys.argv[1].lower() == 'true'
+    train_path = sys.argv[2]
+    val_path = sys.argv[3]
+    test_path = sys.argv[4]
 
     exp = strftime("%Y.%m.%d_%H:%M:%S", gmtime())
     # create directory for logs if not exist
     if save_logs:
-        os.makedirs(os.path.dirname("./logs/"), exist_ok=True)
-        log = logger.LOGGER("./logs/" + exp + "_log")  # create log instance
+        os.makedirs(os.path.dirname("./logs/" + exp + "/"), exist_ok=True)
+        log = logger.LOGGER("./logs/" + exp + "/log")  # create log instance
     else:
         log = logger.LOGGER()  # create log instance
     print_data(log)  # print experiment parameters

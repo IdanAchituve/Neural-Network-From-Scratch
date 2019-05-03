@@ -168,12 +168,13 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
         metrics_to_print = str(per_log_template.format(epoch + 1, train_loss, val_loss, val_acc))
         log.log(metrics_to_print)
 
+        # early stopping
         if val_loss < best_loss:
             model_to_save = copy.deepcopy(model)
 
     # save best model
     if save_logs:
-        with open("./logs/" + exp + "_best_model", 'wb') as best_model:
+        with open("./logs/" + exp + "/best_model", 'wb') as best_model:
             pickle.dump(model_to_save, best_model)
 
     return model, mean, std
@@ -185,7 +186,7 @@ def test_model(model, nn_params, exp, X, Y, save_logs, dataset="val", best_loss=
     batch_size = nn_params["test_batch_size"]
 
     # path for saving test predictions
-    test_pred_path = "./logs/" + exp + "_predictions_" + dataset + ".txt" if save_logs else None
+    test_pred_path = "./logs/" + exp + "/predictions_" + dataset + ".txt" if save_logs else None
 
     # initialize epoch params
     cum_loss = 0.0
