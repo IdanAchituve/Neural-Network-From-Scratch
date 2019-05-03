@@ -46,13 +46,13 @@ def gradient_check(model, x, y):
                 model.init_vals()
                 model.set_param(layer, src_neuron, dst_neuron, param_val + eps)
                 out = model.forward(x)
-                upper_val = model.loss_function(out, y)
+                upper_val = model.loss_function(y)
 
                 # compute (loss) function value of epsilon reduction from one of the parameters
                 model.init_vals()
                 model.set_param(layer, src_neuron, dst_neuron, param_val - eps)  # multiply by 2 because the current value is w + epslion
                 out = model.forward(x)
-                lower_val = model.loss_function(out, y)
+                lower_val = model.loss_function(y)
 
                 # return to original state
                 model.init_vals()
@@ -84,6 +84,17 @@ def read_data(file, is_test=False):
     return images, labels
 
 
+def z_scaling(X, avg=None, std=None):
+
+    # if X is the train set
+    if avg is None:
+        avg = np.mean(X, axis=0)  # mean for each feature
+        std = np.std(X, axis=0)
+
+    scaled_X = (X - avg)/std  # z score scaling
+    return scaled_X, avg, std
+
+
 def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
 
     epochs = nn_params["epochs"]
@@ -98,6 +109,12 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
     X_train, Y_train = read_data(train_path)
     log.log("Read Validation Data")
     X_val, Y_val = read_data(val_path)
+
+    # apply z score scaling
+    mean, std = 0, 0
+    if nn_params["z_scale"]:
+        X_train, mean, std = z_scaling(X_train.copy())
+        X_val, _, __ = z_scaling(X_val.copy(), mean, std)
 
     # initialize experiment params
     best_loss = 2 ** 20
@@ -116,6 +133,7 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
         cum_loss = 0.0
 
         for ind in range(0, X_train.shape[0], batch_size):
+
             # set the model to train mode, zero gradients and zero activations
             model.train_time()
             model.init_vals(True)
@@ -129,10 +147,10 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
 
             # forward
             out = model.forward(batched_data)
-            loss = model.loss_function(out, labels_vec)
+            loss = model.loss_function(labels_vec)
 
             # compute gradients and make the optimizer step
-            model.backward(out, labels_vec)
+            model.backward(batched_data, out, labels_vec)
             model.step()
 
             cum_loss += loss  # sum losses on all examples
@@ -158,7 +176,7 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
         with open("./logs/" + exp + "_best_model", 'wb') as best_model:
             pickle.dump(model_to_save, best_model)
 
-    return model
+    return model, mean, std
 
 
 # make predictions on dev set
@@ -191,7 +209,7 @@ def test_model(model, nn_params, exp, X, Y, save_logs, dataset="val", best_loss=
             # from labels to 1-hot
             labels = Y[ind:ind + batch_size].copy() - 1
             labels_vec = np.eye(NUM_CLASSES)[labels].transpose()
-            loss = model.loss_function(out, labels_vec)
+            loss = model.loss_function(labels_vec)
 
             # calc loss and accuracy
             cum_loss += loss
@@ -210,8 +228,13 @@ def test_model(model, nn_params, exp, X, Y, save_logs, dataset="val", best_loss=
 def classifier(nn_params, log, exp, train_path, val_path, test_path, save_logs):
 
     model = Network.Fully_Connected(nn_params)
-    model = train_model(model, nn_params, log, exp, train_path, val_path, save_logs)
+    model, mean, std = train_model(model, nn_params, log, exp, train_path, val_path, save_logs)
 
     # test model
     X_test, Y_test = read_data(test_path, True)
+
+    # apply z score scaling
+    if nn_params["z_scale"]:
+        X_test, _, __ = z_scaling(X_test.copy(), mean, std)
+
     test_model(model, nn_params, exp, X_test, Y_test, save_logs, "test")

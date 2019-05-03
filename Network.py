@@ -26,6 +26,7 @@ class Fully_Connected:
         self.weights = [np.random.normal(INIT_MEAN, INIT_STD, (prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
         self.grads = [np.zeros((prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
         self.accum_grads = [np.zeros((prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
+        self.logits = 0  # diff between each value an max value on final layer
 
     def forward(self, x):
         # x - matrix of examples. Each example in a column
@@ -47,8 +48,9 @@ class Fully_Connected:
                 out = np.tanh(out)  # a = tanh(z)
             elif self.activation_functions[layer_num] == "softmax":
                 max_val = np.max(out, axis=0)  # find the max valued class in each column (example)
-                e_x = np.exp(out - max_val)  # subtract max_val from all values of each example to prevent overflow
-                out = e_x/np.sum(e_x, axis=0)  # a = tanh(z)
+                self.logits = out - max_val
+                e_x = np.exp(self.logits)  # subtract max_val from all values of each example to prevent overflow
+                out = e_x/np.sum(e_x, axis=0)
 
             # dropout in training time only
             if self.is_train:
@@ -59,7 +61,7 @@ class Fully_Connected:
 
         return out.copy()
 
-    def backward(self, net_out, labels):
+    def backward(self, batched_data, net_out, labels):
 
         # activations point derivative
         def dactivation_dz(layer, activation_val):
@@ -70,6 +72,16 @@ class Fully_Connected:
                 dactivation[dactivation <= 0] = 0
                 dactivation[dactivation > 0] = 1
                 return dactivation
+
+        # Nesterov gradient calculation
+        # - modify the parameters by estimated correction
+        # - run forward pass
+        # - compute gradients at the estimated new location
+        approx_next_weights = self.weights.copy()
+        for layer in range(len(self.layers) - 2, -1, -1):
+            self.weights[layer] = self.weights[layer] - self.momentum * self.accum_grads[layer]
+        self.init_vals()
+        self.forward(batched_data)
 
         batch_size = np.size(labels, 1)
         # for each example in the batch sum gradients on all layers
@@ -100,14 +112,22 @@ class Fully_Connected:
             # add regularization
             self.grads[layer] += self.reg*dreg
 
+        # return parameters state to real point before applying the Nesterov estimate location
+        self.weights = approx_next_weights
+
     # return the sum of losses per batch
-    def loss_function(self, net_out, labels):
+    def loss_function(self, labels):
         sum_weights = 0.0
         for l in range(len(self.layers) - 1):
             # L2 regularization proportional to the loss value
             reg_term = np.sum(self.weights[l] ** 2) if self.reg_type == "L2" else np.sum(np.abs(self.weights[l]))
             sum_weights += reg_term
-        loss = - np.log(np.sum(net_out * labels, axis=0))
+
+        # numarically stable log likelihood calculation
+        label_exit = np.sum(self.logits * labels, axis=0)  # get the value at the true exit
+        e_x = np.exp(self.logits)
+        loss = -(label_exit - np.log(np.sum(e_x, axis=0)))
+
         sum_loss = np.sum(loss) + self.reg*sum_weights
         return sum_loss
 
@@ -119,15 +139,15 @@ class Fully_Connected:
 
     def init_vals(self, init_grads=False):
         self.activations = []
+        self.logits = 0
         if init_grads:
             self.grads = [np.zeros((prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
 
     def step(self):
         for layer_num in range(len(self.layers) - 1):
-            # Nesterov sgd+momentum
-            v = self.momentum * self.accum_grads[layer_num] + self.grads[layer_num]
-            self.weights[layer_num] -= self.lr * v
-            self.accum_grads[layer_num] += self.grads[layer_num]
+            # sgd + momentum
+            self.accum_grads[layer_num] = self.momentum * self.accum_grads[layer_num] + self.lr * self.grads[layer_num]
+            self.weights[layer_num] -= self.accum_grads[layer_num]
 
     def get_grads(self):
         return self.grads.copy()
