@@ -9,8 +9,8 @@ class LOGGER(object):
 
     def log(self, message):
         # put output into frame
-        datetime_string = datetime.datetime.now().strftime("%y-%m-%d %H:%M:%S")
-        str_to_print = "%s [%i] %s\n"
+        datetime_string = datetime.datetime.now().strftime("%Y.%m.%d %H:%M:%S")
+        str_to_print = "%s\t%s\n"
         to_print = str_to_print % (datetime_string, str(message))
 
         # print to screen

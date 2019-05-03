@@ -4,17 +4,25 @@ import Network
 import csv
 import copy
 import pickle
+import os
 
 np.random.seed(111)
+NUM_CLASSES = 10
 
 
-def print_img(X):
+def print_img(X, Y):
 
     # plot a randomly chosen image
-    img = 64
-    plt.figure(figsize=(4, 2))
-    plt.imshow(X[img, :, :, 0], cmap=plt.get_cmap('gray'), interpolation='none')
-    plt.show()
+    os.makedirs(os.path.dirname("./validation_images/"), exist_ok=True)
+    for img_idx in range(X.shape[0]):
+        img = X[img_idx, :]
+        label = Y[img_idx]
+        img = img.reshape(3, 32, 32)
+        img = np.rollaxis(img, 0, 3)  # move channel axis to the end
+        plt.figure(figsize=(4, 2))
+        plt.imshow(img)
+        plt.savefig("./validation_images/img_" + str(img_idx) + "_label_" + str(label))
+        plt.close()
 
 
 def gradient_check(model, x, y):
@@ -50,7 +58,6 @@ def gradient_check(model, x, y):
                 model.init_vals()
                 model.set_param(layer, src_neuron, dst_neuron, param_val)
 
-                vvv = upper_val - lower_val
                 numeric_grad = (upper_val - lower_val)/(2*eps)
 
                 # Compare gradients
@@ -61,30 +68,16 @@ def gradient_check(model, x, y):
     print("Gradient check passed")
 
 
-def temp():
-    layers = [2, 2, 2]
-    initial_lr = 1
-    reg = 0
-    dropout = [0.0, 0.0, 0.0]
-    activations_func = ["tanh", "softmax"]
-    model = Network.Fully_Connected(layers, initial_lr, reg, dropout, activations_func, "L2")
-    example = np.asarray([[0.1], [0.8]])
-    labels = np.asarray([[1, 0]]).transpose()
-    out = model.forward(example)
-    a = model.loss_function(out, labels)
-    model.backward(out, labels)
-    gradient_check(model, example, labels)
-
-
-def read_data(file):
+def read_data(file, is_test=False):
 
     labels = []
     images = []
     with open(file) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter=',')
         for row in csv_reader:
-            labels.append(row[0])
-            images.append(row[1:])
+            if not is_test:
+                labels.append(int(row[0]))
+            images.append([float(i) for i in row[1:]])
 
     labels = np.asarray(labels)
     images = np.asarray(images)
@@ -107,7 +100,7 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
     X_val, Y_val = read_data(val_path)
 
     # initialize experiment params
-    best_loss = 0.0
+    best_loss = 2 ** 20
     model_to_save = copy.deepcopy(model)
     log.log(header_template.format('Epoch', 'Trn_Loss', 'Val_Loss', 'Val_Acc'))
 
@@ -128,22 +121,30 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
             model.init_vals(True)
 
             # run the forward pass
-            batched_data = X_train[ind:ind + batch_size].copy()
-            labels = Y_train[ind:ind + batch_size].copy()
+            batched_data = X_train[ind:ind + batch_size].transpose().copy()
+            labels = Y_train[ind:ind + batch_size].copy() - 1
+
+            # from labels to 1-hot
+            labels_vec = np.eye(NUM_CLASSES)[labels].transpose()
+
+            # forward
             out = model.forward(batched_data)
-            loss = model.loss_function(out, labels)
+            loss = model.loss_function(out, labels_vec)
 
             # compute gradients and make the optimizer step
-            model.backward(out, labels)
+            model.backward(out, labels_vec)
             model.step()
 
             cum_loss += loss  # sum losses on all examples
+
+        # decay learning rate linearly at each iteration
+        model.decay_lr()
 
         # average train loss
         train_loss = cum_loss / X_train.shape[0]
 
         # apply model on validation set
-        val_loss, val_acc = test_model(model, nn_params, log, exp, X_val, Y_val, save_logs, "val")
+        val_loss, val_acc = test_model(model, nn_params, exp, X_val, Y_val, save_logs, "val", best_loss)
 
         # print progress
         metrics_to_print = str(per_log_template.format(epoch + 1, train_loss, val_loss, val_acc))
@@ -161,7 +162,7 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
 
 
 # make predictions on dev set
-def test_model(model, nn_params, log, exp, X, Y, save_logs, dataset):
+def test_model(model, nn_params, exp, X, Y, save_logs, dataset="val", best_loss=2**20):
 
     batch_size = nn_params["test_batch_size"]
 
@@ -177,25 +178,31 @@ def test_model(model, nn_params, log, exp, X, Y, save_logs, dataset):
         model.init_vals(True)
 
         # run the forward pass
-        batched_data = X[ind:ind + batch_size].copy()
-        labels = Y[ind:ind + batch_size].copy()
+        batched_data = X[ind:ind + batch_size].transpose().copy()
+
+        # forward
         out = model.forward(batched_data)
-        loss = model.loss_function(out, labels)
 
-        # sum losses on all examples
-        cum_loss += loss
-
-        # calc accuracy and save predictions
+        # save predictions
         pred = np.argmax(out, axis=0)
-        correct += np.sum(out == pred)
         all_preds = (pred + 1).copy() if ind == 0 else np.concatenate((all_preds, (pred + 1).copy()))
 
-    # write predictions to file
-    if save_logs:
-        np.savetxt(test_pred_path, all_preds.transpose(), fmt='%d')
+        if dataset == "val":
+            # from labels to 1-hot
+            labels = Y[ind:ind + batch_size].copy() - 1
+            labels_vec = np.eye(NUM_CLASSES)[labels].transpose()
+            loss = model.loss_function(out, labels_vec)
+
+            # calc loss and accuracy
+            cum_loss += loss
+            correct += np.sum(labels == pred)
 
     set_loss = cum_loss / X.shape[0]
     accuracy = correct / X.shape[0]
+
+    # write predictions to file
+    if save_logs and (dataset == "test" or (dataset == "val" and set_loss < best_loss)):
+        np.savetxt(test_pred_path, all_preds.transpose(), fmt='%d')
 
     return set_loss, accuracy
 
@@ -205,9 +212,6 @@ def classifier(nn_params, log, exp, train_path, val_path, test_path, save_logs):
     model = Network.Fully_Connected(nn_params)
     model = train_model(model, nn_params, log, exp, train_path, val_path, save_logs)
 
-    # test model here
-    X_test, Y_test = read_data(test_path)
-
-
-
-
+    # test model
+    X_test, Y_test = read_data(test_path, True)
+    test_model(model, nn_params, exp, X_test, Y_test, save_logs, "test")

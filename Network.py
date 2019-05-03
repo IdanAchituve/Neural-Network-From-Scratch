@@ -4,6 +4,7 @@ np.random.seed(111)
 # parameters for initialization
 INIT_MEAN = 0.0
 INIT_STD = 0.01
+MIN_LR = 0.0001
 
 
 class Fully_Connected:
@@ -11,6 +12,7 @@ class Fully_Connected:
     def __init__(self, nn_params):
         self.lr = nn_params["lr"]  # learning rates
         self.lr_decay = nn_params["lr_decay"]  # learning rate decay
+        self.momentum = nn_params["momentum"]
         self.reg = nn_params["reg_lambda"]  # lambda
         self.reg_type = nn_params["reg_type"]
         self.dropout = nn_params["dropout"]  # a list of dropout probability per layer
@@ -21,11 +23,12 @@ class Fully_Connected:
         self.activations = []
 
         # data structures for saving weights and gradients of each layer
-        self.weights = [np.random.normal(INIT_MEAN, INIT_STD, (prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(layers, layers[1:])]
-        self.grads = [np.zeros((prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(layers, layers[1:])]
+        self.weights = [np.random.normal(INIT_MEAN, INIT_STD, (prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
+        self.grads = [np.zeros((prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
+        self.accum_grads = [np.zeros((prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
 
     def forward(self, x):
-        # x - matrix of examples. Each example in a different column
+        # x - matrix of examples. Each example in a column
         batch_size = np.size(x, 1)
 
         out = x.copy()  # copy input
@@ -120,7 +123,11 @@ class Fully_Connected:
             self.grads = [np.zeros((prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
 
     def step(self):
-        self.weights -= self.lr * self.grads
+        for layer_num in range(len(self.layers) - 1):
+            # Nesterov sgd+momentum
+            v = self.momentum * self.accum_grads[layer_num] + self.grads[layer_num]
+            self.weights[layer_num] -= self.lr * v
+            self.accum_grads[layer_num] += self.grads[layer_num]
 
     def get_grads(self):
         return self.grads.copy()
@@ -130,3 +137,7 @@ class Fully_Connected:
 
     def set_param(self, layer, src_neuron, dst_neuron, val):
         self.weights[layer][src_neuron, dst_neuron] = val
+
+    def decay_lr(self):
+        # decay learning rate unless passed the threshold
+        self.lr = self.lr - self.lr_decay if self.lr > MIN_LR else self.lr
