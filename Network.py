@@ -47,7 +47,7 @@ class Fully_Connected:
                 e_x = np.exp(out - max_val)  # subtract max_val from all values of each example to prevent overflow
                 out = e_x/np.sum(e_x, axis=0)  # a = tanh(z)
 
-            # dropout in training time and not on the last layer
+            # dropout in training time only
             if self.is_train:
                 success_prob = 1 - self.dropout[layer_num]  # 0.2 dropout is 0.2 success = ~0.8 should of neurons should not be zeroed out
                 num_neurons = np.size(self.weights[layer_num], 1)  # number of output neurons
@@ -86,8 +86,8 @@ class Fully_Connected:
         # add derivative of regularization
         for layer in range(len(self.layers) - 2, -1, -1):
             if self.reg_type == "L2":
-                dreg = self.weights[layer]
-            else:
+                dreg = (1/2) * self.weights[layer]
+            elif self.reg_type == "L1":
                 dreg = self.weights[layer].copy()
                 dreg[dreg < 0] = -1.0
                 dreg[dreg > 0] = 1.0
@@ -97,7 +97,7 @@ class Fully_Connected:
             # add regularization
             self.grads[layer] += self.reg*dreg
 
-    # return the average of losses per batch
+    # return the sum of losses per batch
     def loss_function(self, net_out, labels):
         sum_weights = 0.0
         for l in range(len(self.layers) - 1):
@@ -105,8 +105,8 @@ class Fully_Connected:
             reg_term = np.sum(self.weights[l] ** 2) if self.reg_type == "L2" else np.sum(np.abs(self.weights[l]))
             sum_weights += reg_term
         loss = - np.log(np.sum(net_out * labels, axis=0))
-        avg_loss = np.average(loss) + self.reg*sum_weights
-        return avg_loss
+        sum_loss = np.sum(loss) + self.reg*sum_weights
+        return sum_loss
 
     def test_time(self):
         self.is_train = False

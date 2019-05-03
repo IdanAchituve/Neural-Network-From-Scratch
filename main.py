@@ -10,12 +10,12 @@ nn_params["lr"] = 0.0002
 nn_params["lr_decay"] = 0.0  # momentum in case of using SGD
 nn_params["reg_lambda"] = 0.0  # regularization parameter
 nn_params["reg_type"] = "L2"  # regularization parameter
-nn_params["epochs"] = 200
-nn_params["train_batch_size"] = 128
-nn_params["test_batch_size"] = 256
-nn_params["layers"] = [362, 256, 128, 64, 32, 1]  # MLP dims  [490, 256, 128, 256, 490]
-nn_params["activations"] = ['relu', 'relu', 'relu', 'relu', 'linear']  # tanh and relu
-nn_params["dropout"] = [0.5, 0.3, 0.2, 0.0, 0.0]  # dropout on each layer
+nn_params["epochs"] = 2
+nn_params["train_batch_size"] = 1
+nn_params["test_batch_size"] = 1
+nn_params["layers"] = [3072, 256, 10]  # MLP dims  [490, 256, 128, 256, 490]
+nn_params["activations"] = ['relu', 'softmax']  # tanh and relu
+nn_params["dropout"] = [0.0, 0.0, 0.0]  # dropout on each layer
 
 
 def print_data(log):
