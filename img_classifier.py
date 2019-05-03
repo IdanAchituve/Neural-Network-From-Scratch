@@ -171,6 +171,7 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
         # early stopping
         if val_loss < best_loss:
             model_to_save = copy.deepcopy(model)
+            best_loss = val_loss
 
     # save best model
     if save_logs:

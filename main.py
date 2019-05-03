@@ -12,12 +12,12 @@ nn_params["lr_decay"] = 0  # learning rate decay factor
 nn_params["momentum"] = 0.0
 nn_params["reg_lambda"] = 0.0  # regularization parameter
 nn_params["reg_type"] = "L2"  # regularization type
-nn_params["epochs"] = 20
+nn_params["epochs"] = 100
 nn_params["train_batch_size"] = 16
 nn_params["test_batch_size"] = 32
-nn_params["layers"] = [3072, 32, 10]  # MLP dims
-nn_params["activations"] = ['relu', 'softmax']  # tanh, relu or softmax
-nn_params["dropout"] = [0.0, 0.0, 0.0]  # dropout on each layer
+nn_params["layers"] = [3072, 256, 128, 10]  # MLP dims
+nn_params["activations"] = ['relu', 'relu', 'softmax']  # tanh, relu or softmax
+nn_params["dropout"] = [0.0, 0.0, 0.0, 0.0]  # dropout on each layer
 nn_params["z_scale"] = False
 
 

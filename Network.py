@@ -113,7 +113,7 @@ class Fully_Connected:
             self.grads[layer] += self.reg*dreg
 
         # return parameters state to real point before applying the Nesterov estimate location
-        self.weights = approx_next_weights
+        self.weights = approx_next_weights.copy()
 
     # return the sum of losses per batch
     def loss_function(self, labels):
