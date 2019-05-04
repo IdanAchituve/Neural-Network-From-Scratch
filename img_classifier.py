@@ -173,10 +173,14 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
             model_to_save = copy.deepcopy(model)
             best_loss = val_loss
 
+        # save weights norm
+        net_norm = model.weights_norm() if epoch == 0 else np.concatenate((net_norm, model.weights_norm()), axis=0)
+
     # save best model
     if save_logs:
         with open("./logs/" + exp + "/best_model", 'wb') as best_model:
             pickle.dump(model_to_save, best_model)
+        np.savetxt("./logs/" + exp + "/matrix_norms.txt", net_norm)
 
     return model, mean, std
 

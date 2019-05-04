@@ -161,3 +161,14 @@ class Fully_Connected:
     def decay_lr(self):
         # decay learning rate unless passed the threshold
         self.lr = self.lr - self.lr_decay if self.lr > MIN_LR else self.lr
+
+    def weights_norm(self):
+        # calc norm of each matrix and max eigenvalue
+        for layer_num in range(len(self.layers) - 1):
+            dot_product = np.dot(self.weights[layer_num], self.weights[layer_num].transpose())
+            norm = np.linalg.norm(dot_product)
+            max_eigenval = np.max(np.linalg.eig(dot_product)[0])
+            norm_eig = np.asarray([int(layer_num + 1), float(norm), max_eigenval.real]).reshape(1, -1)
+            net_norm = norm_eig.copy() if layer_num == 0 else np.concatenate((net_norm, norm_eig.copy()), axis=0)
+        net_norm = np.concatenate((net_norm, np.zeros(3).reshape(1, -1)))  # add delimiter between epochs
+        return net_norm
