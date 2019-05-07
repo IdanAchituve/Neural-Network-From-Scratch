@@ -4,7 +4,7 @@ np.random.seed(111)
 # parameters for initialization
 INIT_MEAN = 0.0
 INIT_STD = 0.01
-MIN_LR = 0.0001
+MIN_LR = 0.001
 
 
 class Fully_Connected:
@@ -20,7 +20,8 @@ class Fully_Connected:
         self.activation_functions = nn_params["activations"]  # list of activation functions
 
         self.is_train = True
-        self.activations = []
+        self.activations = []  # activations
+        self.mask = []  # dropout mask
 
         # data structures for saving weights and gradients of each layer
         self.weights = [np.random.normal(INIT_MEAN, INIT_STD, (prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
@@ -34,6 +35,14 @@ class Fully_Connected:
 
         out = x.copy()  # copy input
         for layer_num in range(len(self.layers) - 1):
+
+            # dropout in training time only
+            success_prob = 1 - self.dropout[layer_num]  # 0.2 dropout is 0.2 success = ~0.8 should of neurons should not be zeroed out
+            if self.is_train:
+                dmask = np.random.binomial(n=1, p=success_prob, size=out.shape) / success_prob
+                out = out * dmask   # element wise multiplication by the mask and scaling output
+                self.mask.append(dmask)  # save mask for backprop phase
+
             # add bias to each layer and save activations
             out = np.concatenate((np.ones(batch_size).reshape(1, -1), out), axis=0)
             self.activations.append(out.copy())
@@ -51,13 +60,6 @@ class Fully_Connected:
                 self.logits = out - max_val
                 e_x = np.exp(self.logits)  # subtract max_val from all values of each example to prevent overflow
                 out = e_x/np.sum(e_x, axis=0)
-
-            # dropout in training time only
-            if self.is_train:
-                success_prob = 1 - self.dropout[layer_num]  # 0.2 dropout is 0.2 success = ~0.8 should of neurons should not be zeroed out
-                num_neurons = np.size(self.weights[layer_num], 1)  # number of output neurons
-                mask = np.random.binomial(n=1, p=success_prob, size=batch_size*num_neurons).reshape(-1, batch_size)
-                out = out * mask / success_prob  # element wise multiplication by the mask and scaling output
 
         return out.copy()
 
@@ -81,10 +83,23 @@ class Fully_Connected:
         for layer in range(len(self.layers) - 2, -1, -1):
             self.weights[layer] = self.weights[layer] - self.momentum * self.accum_grads[layer]
         self.init_vals()
-        self.forward(batched_data)
+        net_out = self.forward(batched_data)
 
         batch_size = np.size(labels, 1)
         # for each example in the batch sum gradients on all layers
+        dL_da = [0] * (len(self.layers) - 1)
+        for layer in range(len(self.layers) - 2, -1, -1):
+            # delta = dL/da * da/dz
+            if layer == len(self.layers) - 2:
+                delta = (net_out - labels).transpose()
+            else:
+                delta = dL_da[layer + 1] * (dactivation_dz(layer, self.activations[layer + 1][1:, :]).transpose())
+            prev_act = self.activations[layer]  # get activation of the prev layer
+            self.grads[layer] = np.dot(prev_act, delta)  # dL/dw = (a_m - T)*a_m-1^T
+            dL_da[layer] = np.dot(delta, self.weights[layer][1:, :].transpose())  # dL/d(a_m-1) = w_m^T*(a_m - T)
+            dL_da[layer] *= (self.mask[layer]).transpose()
+
+        """"
         for example_idx in range(batch_size):
             dL_da = [0] * (len(self.layers) - 1)
             for layer in range(len(self.layers) - 2, -1, -1):
@@ -93,15 +108,16 @@ class Fully_Connected:
                     delta = (net_out[:, example_idx] - labels[:, example_idx]).reshape(1, -1)
                 else:
                     delta = dL_da[layer + 1] * dactivation_dz(layer, self.activations[layer + 1][1:, example_idx])
-                    delta = delta.reshape(1, -1)
-                prev_act = self.activations[layer][:, example_idx].reshape(-1, 1)  # get activation of the 1st layer
+                prev_act = self.activations[layer][:, example_idx].reshape(-1, 1)  # get activation of the prev layer
                 self.grads[layer] += np.dot(prev_act, delta)  # dL/dw = (a_m - T)*a_m-1^T
                 dL_da[layer] = np.dot(delta, self.weights[layer][1:].transpose())  # dL/d(a_m-1) = w_m^T*(a_m - T)
+                dL_da[layer] *= (self.mask[layer][:, example_idx]).reshape(1, -1)
+        """
 
         # add derivative of regularization
         for layer in range(len(self.layers) - 2, -1, -1):
             if self.reg_type == "L2":
-                dreg = (1/2) * self.weights[layer]
+                dreg = self.weights[layer]
             elif self.reg_type == "L1":
                 dreg = self.weights[layer].copy()
                 dreg[dreg < 0] = -1.0
@@ -120,7 +136,7 @@ class Fully_Connected:
         sum_weights = 0.0
         for l in range(len(self.layers) - 1):
             # L2 regularization proportional to the loss value
-            reg_term = np.sum(self.weights[l] ** 2) if self.reg_type == "L2" else np.sum(np.abs(self.weights[l]))
+            reg_term = (1/2) * np.sum(self.weights[l] ** 2) if self.reg_type == "L2" else np.sum(np.abs(self.weights[l]))
             sum_weights += reg_term
 
         # numarically stable log likelihood calculation
@@ -139,6 +155,7 @@ class Fully_Connected:
 
     def init_vals(self, init_grads=False):
         self.activations = []
+        self.mask = []
         self.logits = 0
         if init_grads:
             self.grads = [np.zeros((prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]

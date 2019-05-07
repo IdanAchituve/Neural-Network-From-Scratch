@@ -101,8 +101,8 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
     batch_size = nn_params["train_batch_size"]
 
     # Initialize printing templates
-    per_log_template = '    '.join('{:05d},{:09.5f},{:09.5f},{:08.7f}'.split(','))
-    header_template = ''.join('{:<9},{:<13},{:<13},{:<12}'.split(','))
+    per_log_template = '    '.join('{:05d},{:09.5f},{:09.5f},{:06.5f},{:06.5f}'.split(','))
+    header_template = ''.join('{:<9},{:<13},{:<13},{:<10},{:<10}'.split(','))
 
     # read data
     log.log("Read Train Data")
@@ -117,9 +117,9 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
         X_val, _, __ = z_scaling(X_val.copy(), mean, std)
 
     # initialize experiment params
-    best_loss = 2 ** 20
+    best_accu = 0
     model_to_save = copy.deepcopy(model)
-    log.log(header_template.format('Epoch', 'Trn_Loss', 'Val_Loss', 'Val_Acc'))
+    log.log(header_template.format('Epoch', 'Trn_Loss', 'Val_Loss', 'Trn_Acc', 'Val_Acc'))
 
     for epoch in range(epochs):
 
@@ -131,6 +131,7 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
 
         # initialize epoch params
         cum_loss = 0.0
+        correct = 0
 
         for ind in range(0, X_train.shape[0], batch_size):
 
@@ -147,6 +148,7 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
 
             # forward
             out = model.forward(batched_data)
+            pred = np.argmax(out, axis=0)
             loss = model.loss_function(labels_vec)
 
             # compute gradients and make the optimizer step
@@ -154,24 +156,26 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
             model.step()
 
             cum_loss += loss  # sum losses on all examples
+            correct += np.sum(labels == pred)
 
         # decay learning rate linearly at each iteration
         model.decay_lr()
 
         # average train loss
         train_loss = cum_loss / X_train.shape[0]
+        train_acc = correct / X_train.shape[0]
 
         # apply model on validation set
-        val_loss, val_acc = test_model(model, nn_params, exp, X_val, Y_val, save_logs, "val", best_loss)
+        val_loss, val_acc = test_model(model, nn_params, exp, X_val, Y_val, save_logs, "val", best_accu)
 
         # print progress
-        metrics_to_print = str(per_log_template.format(epoch + 1, train_loss, val_loss, val_acc))
+        metrics_to_print = str(per_log_template.format(epoch + 1, train_loss, val_loss, train_acc, val_acc))
         log.log(metrics_to_print)
 
         # early stopping
-        if val_loss < best_loss:
+        if val_acc > best_accu:
             model_to_save = copy.deepcopy(model)
-            best_loss = val_loss
+            best_accu = val_acc
 
         # save weights norm
         net_norm = model.weights_norm() if epoch == 0 else np.concatenate((net_norm, model.weights_norm()), axis=0)
@@ -186,7 +190,7 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
 
 
 # make predictions on dev set
-def test_model(model, nn_params, exp, X, Y, save_logs, dataset="val", best_loss=2**20):
+def test_model(model, nn_params, exp, X, Y, save_logs, dataset="val", best_accu=0):
 
     batch_size = nn_params["test_batch_size"]
 
@@ -225,7 +229,7 @@ def test_model(model, nn_params, exp, X, Y, save_logs, dataset="val", best_loss=
     accuracy = correct / X.shape[0]
 
     # write predictions to file
-    if save_logs and (dataset == "test" or (dataset == "val" and set_loss < best_loss)):
+    if save_logs and (dataset == "test" or (dataset == "val" and accuracy > best_accu)):
         np.savetxt(test_pred_path, all_preds.transpose(), fmt='%d')
 
     return set_loss, accuracy
