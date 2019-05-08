@@ -121,7 +121,7 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
     model_to_save = copy.deepcopy(model)
     log.log(header_template.format('Epoch', 'Trn_Loss', 'Val_Loss', 'Trn_Acc', 'Val_Acc'))
 
-    for epoch in range(epochs):
+    for epoch in range(1, epochs + 1):
 
         # shuffle examples
         indices = np.arange(X_train.shape[0])
@@ -158,8 +158,9 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
             cum_loss += loss  # sum losses on all examples
             correct += np.sum(labels == pred)
 
-        # decay learning rate linearly at each iteration
-        model.decay_lr()
+        # decay learning rate
+        if nn_params["lr_decay_epoch"] % epoch == 0:
+            model.decay_lr()
 
         # average train loss
         train_loss = cum_loss / X_train.shape[0]
@@ -178,7 +179,7 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
             best_accu = val_acc
 
         # save weights norm
-        net_norm = model.weights_norm() if epoch == 0 else np.concatenate((net_norm, model.weights_norm()), axis=0)
+        net_norm = model.weights_norm() if epoch == 1 else np.concatenate((net_norm, model.weights_norm()), axis=0)
 
     # save best model
     if save_logs:
@@ -237,7 +238,11 @@ def test_model(model, nn_params, exp, X, Y, save_logs, dataset="val", best_accu=
 
 def classifier(nn_params, log, exp, train_path, val_path, test_path, save_logs):
 
+    # create model and train it
     model = Network.Fully_Connected(nn_params)
+    if nn_params["load_model"] is not None:
+        with open(nn_params["load_model"], 'rb') as pickle_file:
+            model = pickle.load(pickle_file)
     model, mean, std = train_model(model, nn_params, log, exp, train_path, val_path, save_logs)
 
     # test model

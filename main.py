@@ -7,18 +7,19 @@ from time import gmtime, strftime
 
 # NN hyper-parameters
 nn_params = {}
-nn_params["lr"] = 0.01
-nn_params["lr_decay"] = 0.0  # learning rate decay factor
+nn_params["lr"] = 0.1
+nn_params["lr_decay_epoch"] = 10  # learning rate decay factor
 nn_params["momentum"] = 0.0
-nn_params["reg_lambda"] = 0.0  # regularization parameter
+nn_params["reg_lambda"] = 0.001  # regularization parameter
 nn_params["reg_type"] = "L2"  # regularization type
-nn_params["epochs"] = 100
+nn_params["epochs"] = 150
 nn_params["train_batch_size"] = 32
 nn_params["test_batch_size"] = 64
-nn_params["layers"] = [3072, 512, 256, 128, 10]  # MLP dims
-nn_params["activations"] = ['relu', 'relu', 'relu', 'softmax']  # tanh, relu or softmax
-nn_params["dropout"] = [0.5, 0.5, 0.5, 0.3]  # dropout on each layer
+nn_params["layers"] = [3072, 1000, 500, 1000, 500, 1000, 10]  # MLP dims
+nn_params["activations"] = ['relu', 'linear', 'relu', 'linear', 'relu', 'softmax']  # tanh, relu or softmax
+nn_params["dropout"] = [0.5, 0.5, 0.0, 0.5, 0.0, 0.5]  # dropout on each layer
 nn_params["z_scale"] = True
+nn_params["load_model"] = None
 
 
 def print_data(log):

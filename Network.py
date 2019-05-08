@@ -4,14 +4,12 @@ np.random.seed(111)
 # parameters for initialization
 INIT_MEAN = 0.0
 INIT_STD = 0.01
-MIN_LR = 0.001
 
 
 class Fully_Connected:
 
     def __init__(self, nn_params):
         self.lr = nn_params["lr"]  # learning rates
-        self.lr_decay = nn_params["lr_decay"]  # learning rate decay
         self.momentum = nn_params["momentum"]
         self.reg = nn_params["reg_lambda"]  # lambda
         self.reg_type = nn_params["reg_type"]
@@ -74,6 +72,8 @@ class Fully_Connected:
                 dactivation[dactivation <= 0] = 0
                 dactivation[dactivation > 0] = 1
                 return dactivation
+            else:
+                return np.ones(activation_val.shape)
 
         # Nesterov gradient calculation
         # - modify the parameters by estimated correction
@@ -98,21 +98,6 @@ class Fully_Connected:
             self.grads[layer] = np.dot(prev_act, delta)  # dL/dw = (a_m - T)*a_m-1^T
             dL_da[layer] = np.dot(delta, self.weights[layer][1:, :].transpose())  # dL/d(a_m-1) = w_m^T*(a_m - T)
             dL_da[layer] *= (self.mask[layer]).transpose()
-
-        """"
-        for example_idx in range(batch_size):
-            dL_da = [0] * (len(self.layers) - 1)
-            for layer in range(len(self.layers) - 2, -1, -1):
-                # delta = dL/da * da/dz
-                if layer == len(self.layers) - 2:
-                    delta = (net_out[:, example_idx] - labels[:, example_idx]).reshape(1, -1)
-                else:
-                    delta = dL_da[layer + 1] * dactivation_dz(layer, self.activations[layer + 1][1:, example_idx])
-                prev_act = self.activations[layer][:, example_idx].reshape(-1, 1)  # get activation of the prev layer
-                self.grads[layer] += np.dot(prev_act, delta)  # dL/dw = (a_m - T)*a_m-1^T
-                dL_da[layer] = np.dot(delta, self.weights[layer][1:].transpose())  # dL/d(a_m-1) = w_m^T*(a_m - T)
-                dL_da[layer] *= (self.mask[layer][:, example_idx]).reshape(1, -1)
-        """
 
         # add derivative of regularization
         for layer in range(len(self.layers) - 2, -1, -1):
@@ -176,8 +161,9 @@ class Fully_Connected:
         self.weights[layer][src_neuron, dst_neuron] = val
 
     def decay_lr(self):
-        # decay learning rate unless passed the threshold
-        self.lr = self.lr - self.lr_decay if self.lr > MIN_LR else self.lr
+        lr_scale = 1 / self.lr  # get current scale of learning rate
+        lr_decay = 1 / (lr_scale * 10)  # decay learning rate by 1/10 in the current scale
+        self.lr = self.lr - lr_decay
 
     def weights_norm(self):
         # calc norm of each matrix and max eigenvalue
