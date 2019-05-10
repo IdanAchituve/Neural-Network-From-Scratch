@@ -4,13 +4,20 @@ np.random.seed(111)
 # parameters for initialization
 INIT_MEAN = 0.0
 INIT_STD = 0.01
-
+MIN_LR = 0.0005
+LR_SCALE = 2
+MAX_MOMENTUM = 0.9
+MOMENTUM_SCALE = 0.2
+EPSILON = 10 ** -8
 
 class Fully_Connected:
 
     def __init__(self, nn_params):
+        self.optimizer = nn_params["optimizer"]
         self.lr = nn_params["lr"]  # learning rates
         self.momentum = nn_params["momentum"]
+        self.second_moment = nn_params["second_moment"]
+        self.update_counter = 0
         self.reg = nn_params["reg_lambda"]  # lambda
         self.reg_type = nn_params["reg_type"]
         self.dropout = nn_params["dropout"]  # a list of dropout probability per layer
@@ -25,6 +32,7 @@ class Fully_Connected:
         self.weights = [np.random.normal(INIT_MEAN, INIT_STD, (prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
         self.grads = [np.zeros((prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
         self.accum_grads = [np.zeros((prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
+        self.sec_accum_grads = [np.zeros((prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
         self.logits = 0  # diff between each value an max value on final layer
 
     def forward(self, x):
@@ -41,7 +49,7 @@ class Fully_Connected:
                 out = out * dmask   # element wise multiplication by the mask and scaling output
                 self.mask.append(dmask)  # save mask for backprop phase
 
-            # add bias to each layer and save activations
+            # add bias to layer and save activations
             out = np.concatenate((np.ones(batch_size).reshape(1, -1), out), axis=0)
             self.activations.append(out.copy())
 
@@ -79,12 +87,6 @@ class Fully_Connected:
         # - modify the parameters by estimated correction
         # - run forward pass
         # - compute gradients at the estimated new location
-        approx_next_weights = self.weights.copy()
-        for layer in range(len(self.layers) - 2, -1, -1):
-            self.weights[layer] = self.weights[layer] - self.momentum * self.accum_grads[layer]
-        self.init_vals()
-        net_out = self.forward(batched_data)
-
         batch_size = np.size(labels, 1)
         # for each example in the batch sum gradients on all layers
         dL_da = [0] * (len(self.layers) - 1)
@@ -113,8 +115,6 @@ class Fully_Connected:
             # add regularization
             self.grads[layer] += self.reg*dreg
 
-        # return parameters state to real point before applying the Nesterov estimate location
-        self.weights = approx_next_weights.copy()
 
     # return the sum of losses per batch
     def loss_function(self, labels):
@@ -146,10 +146,21 @@ class Fully_Connected:
             self.grads = [np.zeros((prev_layer + 1, next_layer)) for prev_layer, next_layer in zip(self.layers, self.layers[1:])]
 
     def step(self):
+        self.update_counter += 1  # count time steps
         for layer_num in range(len(self.layers) - 1):
-            # sgd + momentum
-            self.accum_grads[layer_num] = self.momentum * self.accum_grads[layer_num] + self.lr * self.grads[layer_num]
-            self.weights[layer_num] -= self.accum_grads[layer_num]
+            # Nesterov sgd + momentum
+            if self.optimizer == "SGD":
+                prev_accum_grads = self.accum_grads[layer_num].copy()
+                self.accum_grads[layer_num] = self.momentum * self.accum_grads[layer_num] - self.lr * self.grads[layer_num]
+                self.weights[layer_num] = self.weights[layer_num] - self.momentum * prev_accum_grads + (1 + self.momentum) * self.accum_grads[layer_num]
+
+            # ADAM optimizer
+            else:
+                self.accum_grads[layer_num] = self.momentum * self.accum_grads[layer_num] + (1 - self.momentum) * self.grads[layer_num]
+                self.sec_accum_grads[layer_num] = self.second_moment * self.sec_accum_grads[layer_num] + (1 - self.second_moment) * (self.grads[layer_num] ** 2)
+                m_hat = self.accum_grads[layer_num] / (1 - (self.momentum ** self.update_counter))  # bias corrected first moment
+                v_hat = self.sec_accum_grads[layer_num] / (1 - (self.second_moment ** self.update_counter))  # bias corrected second moment
+                self.weights[layer_num] = self.weights[layer_num] - self.lr * m_hat / (np.sqrt(v_hat) + EPSILON)
 
     def get_grads(self):
         return self.grads.copy()
@@ -161,9 +172,10 @@ class Fully_Connected:
         self.weights[layer][src_neuron, dst_neuron] = val
 
     def decay_lr(self):
-        lr_scale = 1 / self.lr  # get current scale of learning rate
-        lr_decay = 1 / (lr_scale * 10)  # decay learning rate by 1/10 in the current scale
-        self.lr = self.lr - lr_decay
+        self.lr = max(MIN_LR, self.lr / LR_SCALE)  # cut by halve each time
+
+    def momentum_change(self):
+        self.momentum = min(MAX_MOMENTUM, self.momentum + MOMENTUM_SCALE)  # change momentum
 
     def weights_norm(self):
         # calc norm of each matrix and max eigenvalue

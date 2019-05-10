@@ -119,7 +119,7 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
     # initialize experiment params
     best_accu = 0
     model_to_save = copy.deepcopy(model)
-    log.log(header_template.format('Epoch', 'Trn_Loss', 'Val_Loss', 'Trn_Acc', 'Val_Acc'))
+    log.log(header_template.format('Epoch', 'Trn_Loss', 'Val_Loss', 'Trn_Acc', ' Val_Acc'))
 
     for epoch in range(1, epochs + 1):
 
@@ -147,6 +147,8 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
             labels_vec = np.eye(NUM_CLASSES)[labels].transpose()
 
             # forward
+            if ind == 7232:
+                xxx = 1
             out = model.forward(batched_data)
             pred = np.argmax(out, axis=0)
             loss = model.loss_function(labels_vec)
@@ -159,8 +161,11 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
             correct += np.sum(labels == pred)
 
         # decay learning rate
-        if nn_params["lr_decay_epoch"] % epoch == 0:
+        if epoch % nn_params["lr_decay_epoch"] == 0:
             model.decay_lr()
+
+        if epoch % nn_params["momentum_change_epoch"] == 0:
+            model.momentum_change()
 
         # average train loss
         train_loss = cum_loss / X_train.shape[0]
@@ -170,7 +175,7 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
         val_loss, val_acc = test_model(model, nn_params, exp, X_val, Y_val, save_logs, "val", best_accu)
 
         # print progress
-        metrics_to_print = str(per_log_template.format(epoch + 1, train_loss, val_loss, train_acc, val_acc))
+        metrics_to_print = str(per_log_template.format(epoch, train_loss, val_loss, train_acc, val_acc))
         log.log(metrics_to_print)
 
         # early stopping
@@ -180,12 +185,12 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
 
         # save weights norm
         net_norm = model.weights_norm() if epoch == 1 else np.concatenate((net_norm, model.weights_norm()), axis=0)
+        np.savetxt("./logs/" + exp + "/matrix_norms.txt", net_norm)
 
     # save best model
     if save_logs:
         with open("./logs/" + exp + "/best_model", 'wb') as best_model:
             pickle.dump(model_to_save, best_model)
-        np.savetxt("./logs/" + exp + "/matrix_norms.txt", net_norm)
 
     return model, mean, std
 
