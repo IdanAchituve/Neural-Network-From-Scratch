@@ -8,12 +8,12 @@ from time import gmtime, strftime
 # NN hyper-parameters
 nn_params = {}
 nn_params["optimizer"] = "ADAM"  # learning rate decay factor
-nn_params["lr"] = 0.01
-nn_params["lr_decay_epoch"] = 6  # learning rate decay factor
+nn_params["lr"] = 0.001
+nn_params["lr_decay_epoch"] = 1  # learning rate decay factor
 nn_params["momentum"] = 0.9
 nn_params["momentum_change_epoch"] = 10000  # learning rate decay factor
 nn_params["second_moment"] = 0.999  # to be used with ADAM optimizer
-nn_params["reg_lambda"] = 0.003  # regularization parameter
+nn_params["reg_lambda"] = 0.004  # regularization parameter
 nn_params["reg_type"] = "L2"  # regularization type
 nn_params["epochs"] = 200
 nn_params["train_batch_size"] = 32

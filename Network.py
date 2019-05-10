@@ -4,7 +4,7 @@ np.random.seed(111)
 # parameters for initialization
 INIT_MEAN = 0.0
 INIT_STD = 0.01
-MIN_LR = 0.0005
+MIN_LR = 0.0001
 LR_SCALE = 2
 MAX_MOMENTUM = 0.9
 MOMENTUM_SCALE = 0.2
@@ -14,11 +14,14 @@ class Fully_Connected:
 
     def __init__(self, nn_params):
         self.optimizer = nn_params["optimizer"]
+        self.initial_lr = nn_params["lr"]  # initial learning rate
         self.lr = nn_params["lr"]  # learning rates
         self.momentum = nn_params["momentum"]
         self.second_moment = nn_params["second_moment"]
         self.update_counter = 0
+        self.epoch = 0
         self.reg = nn_params["reg_lambda"]  # lambda
+        self.initilal_reg = nn_params["reg_lambda"]  # initial reg param
         self.reg_type = nn_params["reg_type"]
         self.dropout = nn_params["dropout"]  # a list of dropout probability per layer
         self.layers = nn_params["layers"]  # list of layers size
@@ -83,10 +86,6 @@ class Fully_Connected:
             else:
                 return np.ones(activation_val.shape)
 
-        # Nesterov gradient calculation
-        # - modify the parameters by estimated correction
-        # - run forward pass
-        # - compute gradients at the estimated new location
         batch_size = np.size(labels, 1)
         # for each example in the batch sum gradients on all layers
         dL_da = [0] * (len(self.layers) - 1)
@@ -101,30 +100,33 @@ class Fully_Connected:
             dL_da[layer] = np.dot(delta, self.weights[layer][1:, :].transpose())  # dL/d(a_m-1) = w_m^T*(a_m - T)
             dL_da[layer] *= (self.mask[layer]).transpose()
 
-        # add derivative of regularization
+        # add regularization to gradient and average loss on batch
         for layer in range(len(self.layers) - 2, -1, -1):
-            if self.reg_type == "L2":
-                dreg = self.weights[layer]
-            elif self.reg_type == "L1":
-                dreg = self.weights[layer].copy()
-                dreg[dreg < 0] = -1.0
-                dreg[dreg > 0] = 1.0
-
             # average gradients
             self.grads[layer] = self.grads[layer] / batch_size
-            # add regularization
-            self.grads[layer] += self.reg*dreg
 
+            # in SGD the loss has L2 regularization
+            if self.optimizer == "SGD":
+                if self.reg_type == "L2":
+                    dreg = self.weights[layer]
+                elif self.reg_type == "L1":
+                    dreg = self.weights[layer].copy()
+                    dreg[dreg < 0] = -1.0
+                    dreg[dreg > 0] = 1.0
+
+                # add regularization
+                self.grads[layer] += self.reg*dreg
 
     # return the sum of losses per batch
     def loss_function(self, labels):
         sum_weights = 0.0
-        for l in range(len(self.layers) - 1):
-            # L2 regularization proportional to the loss value
-            reg_term = (1/2) * np.sum(self.weights[l] ** 2) if self.reg_type == "L2" else np.sum(np.abs(self.weights[l]))
-            sum_weights += reg_term
+        if self.optimizer == "SGD":
+            for l in range(len(self.layers) - 1):
+                # L2 regularization proportional to the loss value
+                reg_term = (1/2) * np.sum(self.weights[l] ** 2) if self.reg_type == "L2" else np.sum(np.abs(self.weights[l]))
+                sum_weights += reg_term
 
-        # numarically stable log likelihood calculation
+        # numerically stable log likelihood calculation
         label_exit = np.sum(self.logits * labels, axis=0)  # get the value at the true exit
         e_x = np.exp(self.logits)
         loss = -(label_exit - np.log(np.sum(e_x, axis=0)))
@@ -148,19 +150,19 @@ class Fully_Connected:
     def step(self):
         self.update_counter += 1  # count time steps
         for layer_num in range(len(self.layers) - 1):
-            # Nesterov sgd + momentum
+            # Nesterov gradient calculation
             if self.optimizer == "SGD":
                 prev_accum_grads = self.accum_grads[layer_num].copy()
                 self.accum_grads[layer_num] = self.momentum * self.accum_grads[layer_num] - self.lr * self.grads[layer_num]
                 self.weights[layer_num] = self.weights[layer_num] - self.momentum * prev_accum_grads + (1 + self.momentum) * self.accum_grads[layer_num]
 
-            # ADAM optimizer
+            # ADAM optimizer with weight decay
             else:
                 self.accum_grads[layer_num] = self.momentum * self.accum_grads[layer_num] + (1 - self.momentum) * self.grads[layer_num]
                 self.sec_accum_grads[layer_num] = self.second_moment * self.sec_accum_grads[layer_num] + (1 - self.second_moment) * (self.grads[layer_num] ** 2)
                 m_hat = self.accum_grads[layer_num] / (1 - (self.momentum ** self.update_counter))  # bias corrected first moment
                 v_hat = self.sec_accum_grads[layer_num] / (1 - (self.second_moment ** self.update_counter))  # bias corrected second moment
-                self.weights[layer_num] = self.weights[layer_num] - self.lr * m_hat / (np.sqrt(v_hat) + EPSILON)
+                self.weights[layer_num] = self.weights[layer_num] - self.lr * m_hat / (np.sqrt(v_hat) + EPSILON) - self.reg * self.weights[layer_num]
 
     def get_grads(self):
         return self.grads.copy()
@@ -172,7 +174,12 @@ class Fully_Connected:
         self.weights[layer][src_neuron, dst_neuron] = val
 
     def decay_lr(self):
-        self.lr = max(MIN_LR, self.lr / LR_SCALE)  # cut by halve each time
+        self.epoch = self.epoch + 1
+        if self.optimizer == "SGD":
+            self.lr = max(MIN_LR, self.lr / LR_SCALE)  # cut by halve each time
+        else:  # In ADAM decay lr  and regularization at each epoch
+            self.lr = self.initial_lr / np.sqrt(self.epoch)
+            self.reg = self.initilal_reg / np.sqrt(self.epoch)
 
     def momentum_change(self):
         self.momentum = min(MAX_MOMENTUM, self.momentum + MOMENTUM_SCALE)  # change momentum
