@@ -118,6 +118,7 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
 
     # initialize experiment params
     best_accu = 0
+    best_loss = 10000
     model_to_save = copy.deepcopy(model)
     log.log(header_template.format('Epoch', 'Trn_Loss', 'Val_Loss', 'Trn_Acc', ' Val_Acc'))
 
@@ -147,18 +148,18 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
             labels_vec = np.eye(NUM_CLASSES)[labels].transpose()
 
             # forward
-            if ind == 7232:
-                xxx = 1
             out = model.forward(batched_data)
-            pred = np.argmax(out, axis=0)
-            loss = model.loss_function(labels_vec)
+            loss = model.loss_function(batched_data, out, labels_vec)
 
             # compute gradients and make the optimizer step
             model.backward(batched_data, out, labels_vec)
             model.step()
 
             cum_loss += loss  # sum losses on all examples
-            correct += np.sum(labels == pred)
+
+            if nn_params["model"] == "FC":
+                pred = np.argmax(out, axis=0)
+                correct += np.sum(labels == pred)
 
         # decay learning rate
         if epoch % nn_params["lr_decay_epoch"] == 0:
@@ -179,17 +180,19 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
         log.log(metrics_to_print)
 
         # early stopping
-        if val_acc > best_accu:
+        if val_acc > best_accu or (val_acc == best_accu and val_loss < best_loss):
             model_to_save = copy.deepcopy(model)
             best_accu = val_acc
 
         # save weights norm
         net_norm = model.weights_norm() if epoch == 1 else np.concatenate((net_norm, model.weights_norm()), axis=0)
-        np.savetxt("./logs/" + exp + "/matrix_norms.txt", net_norm)
+        if save_logs:
+            np.savetxt("./logs/" + exp + "/matrix_norms.txt", net_norm)
 
     # save best model
     if save_logs:
-        with open("./logs/" + exp + "/best_model", 'wb') as best_model:
+        file_name = "/best_model" if nn_params["model"] == "FC" else "/best_model_AE"
+        with open("./logs/" + exp + file_name, 'wb') as best_model:
             pickle.dump(model_to_save, best_model)
 
     return model, mean, std
@@ -218,24 +221,26 @@ def test_model(model, nn_params, exp, X, Y, save_logs, dataset="val", best_accu=
         out = model.forward(batched_data)
 
         # save predictions
-        pred = np.argmax(out, axis=0)
-        all_preds = (pred + 1).copy() if ind == 0 else np.concatenate((all_preds, (pred + 1).copy()))
+        if nn_params["model"] == "FC":
+            pred = np.argmax(out, axis=0)
+            all_preds = (pred + 1).copy() if ind == 0 else np.concatenate((all_preds, (pred + 1).copy()))
 
         if dataset == "val":
             # from labels to 1-hot
             labels = Y[ind:ind + batch_size].copy() - 1
             labels_vec = np.eye(NUM_CLASSES)[labels].transpose()
-            loss = model.loss_function(labels_vec)
+            loss = model.loss_function(batched_data, out, labels_vec)
 
             # calc loss and accuracy
             cum_loss += loss
-            correct += np.sum(labels == pred)
+            if nn_params["model"] == "FC":
+                correct += np.sum(labels == pred)
 
     set_loss = cum_loss / X.shape[0]
     accuracy = correct / X.shape[0]
 
     # write predictions to file
-    if save_logs and (dataset == "test" or (dataset == "val" and accuracy > best_accu)):
+    if nn_params["model"] == "FC" and save_logs and (dataset == "test" or (dataset == "val" and accuracy > best_accu)):
         np.savetxt(test_pred_path, all_preds.transpose(), fmt='%d')
 
     return set_loss, accuracy
@@ -247,14 +252,22 @@ def classifier(nn_params, log, exp, train_path, val_path, test_path, save_logs):
     model = Network.Fully_Connected(nn_params)
     if nn_params["load_model"] is not None:
         with open(nn_params["load_model"], 'rb') as pickle_file:
-            model = pickle.load(pickle_file)
+            model2 = pickle.load(pickle_file)
+
+        # copy weight after pre training
+        if nn_params["model"] == "FC" and nn_params["load_model"][-2:] == "AE":
+            model.init_weights(model2.weights)
+        else:
+            model = copy.deepcopy(model2)
+
     model, mean, std = train_model(model, nn_params, log, exp, train_path, val_path, save_logs)
 
     # test model
-    X_test, Y_test = read_data(test_path, True)
+    if nn_params["model"] == "FC":
+        X_test, Y_test = read_data(test_path, True)
 
-    # apply z score scaling
-    if nn_params["z_scale"]:
-        X_test, _, __ = z_scaling(X_test.copy(), mean, std)
+        # apply z score scaling
+        if nn_params["z_scale"]:
+            X_test, _, __ = z_scaling(X_test.copy(), mean, std)
 
-    test_model(model, nn_params, exp, X_test, Y_test, save_logs, "test")
+        test_model(model, nn_params, exp, X_test, Y_test, save_logs, "test")

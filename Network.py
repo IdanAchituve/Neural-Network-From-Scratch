@@ -13,6 +13,7 @@ EPSILON = 10 ** -8
 class Fully_Connected:
 
     def __init__(self, nn_params):
+        self.model = nn_params["model"]
         self.optimizer = nn_params["optimizer"]
         self.initial_lr = nn_params["lr"]  # initial learning rate
         self.lr = nn_params["lr"]  # learning rates
@@ -92,7 +93,7 @@ class Fully_Connected:
         for layer in range(len(self.layers) - 2, -1, -1):
             # delta = dL/da * da/dz
             if layer == len(self.layers) - 2:
-                delta = (net_out - labels).transpose()
+                delta = (net_out - labels).transpose() if self.model == "FC" else (net_out - batched_data).transpose()
             else:
                 delta = dL_da[layer + 1] * (dactivation_dz(layer, self.activations[layer + 1][1:, :]).transpose())
             prev_act = self.activations[layer]  # get activation of the prev layer
@@ -118,7 +119,7 @@ class Fully_Connected:
                 self.grads[layer] += self.reg*dreg
 
     # return the sum of losses per batch
-    def loss_function(self, labels):
+    def loss_function(self, batched_data, net_out, labels):
         sum_weights = 0.0
         if self.optimizer == "SGD":
             for l in range(len(self.layers) - 1):
@@ -127,9 +128,12 @@ class Fully_Connected:
                 sum_weights += reg_term
 
         # numerically stable log likelihood calculation
-        label_exit = np.sum(self.logits * labels, axis=0)  # get the value at the true exit
-        e_x = np.exp(self.logits)
-        loss = -(label_exit - np.log(np.sum(e_x, axis=0)))
+        if self.model == "FC":
+            label_exit = np.sum(self.logits * labels, axis=0)  # get the value at the true exit
+            e_x = np.exp(self.logits)
+            loss = -(label_exit - np.log(np.sum(e_x, axis=0)))
+        else:
+            loss = (1/2) * np.sum(np.power(batched_data - net_out, 2), axis=0)
 
         sum_loss = np.sum(loss) + self.reg*sum_weights
         return sum_loss
@@ -194,3 +198,8 @@ class Fully_Connected:
             net_norm = norm_eig.copy() if layer_num == 0 else np.concatenate((net_norm, norm_eig.copy()), axis=0)
         net_norm = np.concatenate((net_norm, np.zeros(3).reshape(1, -1)))  # add delimiter between epochs
         return net_norm
+
+    def init_weights(self, weights):
+        # copy weights learned by AE aside from the last layer
+        for layer_num in range(len(self.layers) - 2):
+            self.weights[layer_num] = weights[layer_num].copy()

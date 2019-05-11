@@ -7,20 +7,21 @@ from time import gmtime, strftime
 
 # NN hyper-parameters
 nn_params = {}
-nn_params["optimizer"] = "ADAM"  # learning rate decay factor
-nn_params["lr"] = 0.001
-nn_params["lr_decay_epoch"] = 1  # learning rate decay factor
+nn_params["model"] = "AE"
+nn_params["optimizer"] = "SGD"  # learning rate decay factor
+nn_params["lr"] = 0.01
+nn_params["lr_decay_epoch"] = 5  # learning rate decay factor
 nn_params["momentum"] = 0.9
 nn_params["momentum_change_epoch"] = 10000  # learning rate decay factor
-nn_params["second_moment"] = 0.999  # to be used with ADAM optimizer
-nn_params["reg_lambda"] = 0.004  # regularization parameter
+nn_params["second_moment"] = 0.0  # to be used with ADAM optimizer
+nn_params["reg_lambda"] = 1.0  # regularization parameter
 nn_params["reg_type"] = "L2"  # regularization type
-nn_params["epochs"] = 200
+nn_params["epochs"] = 2
 nn_params["train_batch_size"] = 32
 nn_params["test_batch_size"] = 64
-nn_params["layers"] = [3072, 1000, 500, 1000, 500, 1000, 10]  # MLP dims
-nn_params["activations"] = ['relu', 'linear', 'relu', 'linear', 'relu', 'softmax']  # tanh, relu or softmax
-nn_params["dropout"] = [0.5, 0.5, 0.1, 0.5, 0.1, 0.5]  # dropout on each layer
+nn_params["layers"] = [3072, 1500, 500, 1500, 500, 1500, 3072]  # MLP dims
+nn_params["activations"] = ['relu', 'linear', 'relu', 'linear', 'relu', 'linear']  # tanh, relu or softmax
+nn_params["dropout"] = [0.3, 0.5, 0.4, 0.5, 0.4, 0.0]  # dropout on each layer
 nn_params["z_scale"] = True
 nn_params["load_model"] = None
 
