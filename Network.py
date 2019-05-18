@@ -1,5 +1,5 @@
 import numpy as np
-np.random.seed(111)
+np.random.seed(222)
 
 # parameters for initialization
 INIT_MEAN = 0.0
@@ -13,6 +13,7 @@ EPSILON = 10 ** -8
 class Fully_Connected:
 
     def __init__(self, nn_params):
+        self.model = nn_params["model"]
         self.optimizer = nn_params["optimizer"]
         self.initial_lr = nn_params["lr"]  # initial learning rate
         self.lr = nn_params["lr"]  # learning rates
@@ -118,7 +119,7 @@ class Fully_Connected:
                 self.grads[layer] += self.reg*dreg
 
     # return the sum of losses per batch
-    def loss_function(self, labels):
+    def loss_function(self, batched_data, net_out, labels):
         sum_weights = 0.0
         if self.optimizer == "SGD":
             for l in range(len(self.layers) - 1):
@@ -194,3 +195,10 @@ class Fully_Connected:
             net_norm = norm_eig.copy() if layer_num == 0 else np.concatenate((net_norm, norm_eig.copy()), axis=0)
         net_norm = np.concatenate((net_norm, np.zeros(3).reshape(1, -1)))  # add delimiter between epochs
         return net_norm
+
+    def init_weights(self, weights, accum_grads, sec_accum_grads):
+        # copy weights learned by AE aside from the last layer
+        for layer_num in range(len(self.layers) - 1):
+            self.weights[layer_num] = weights[layer_num].copy()
+            self.accum_grads[layer_num] = accum_grads[layer_num].copy()
+            self.sec_accum_grads[layer_num] = sec_accum_grads[layer_num].copy()

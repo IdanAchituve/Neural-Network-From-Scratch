@@ -6,9 +6,10 @@ import copy
 import pickle
 import os
 
-np.random.seed(111)
+np.random.seed(222)
 NUM_CLASSES = 10
-
+img_channels = 3
+img_size = 32
 
 def print_img(X, Y):
 
@@ -35,9 +36,6 @@ def gradient_check(model, x, y):
     for layer in range(len(params)):
         for src_neuron in range(np.size(params[layer], 0)):
             for dst_neuron in range(np.size(params[layer], 1)):
-
-                if layer == 1 and src_neuron == 0 and dst_neuron == 0:
-                    xxx = 1
 
                 param_val = params[layer][src_neuron, dst_neuron].copy()
                 grad_val = grads[layer][src_neuron, dst_neuron].copy()
@@ -68,16 +66,42 @@ def gradient_check(model, x, y):
     print("Gradient check passed")
 
 
-def read_data(file, is_test=False):
-
+def read_data(file, dataset="train"):
     labels = []
     images = []
     with open(file) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter=',')
         for row in csv_reader:
-            if not is_test:
+            if dataset == "train" or dataset == "validation":
                 labels.append(int(row[0]))
-            images.append([float(i) for i in row[1:]])
+            row_img = np.asarray([float(i) for i in row[1:]])
+            images.append(row_img)
+            if dataset == "train":
+                img = row_img.reshape([img_channels, img_size, img_size])
+                # move the channel dimension to the last
+                img = np.rollaxis(img, 0, 3)
+                permut = np.random.randint(3)
+
+                # flip left to right
+                flippedlr_img = np.fliplr(img)
+                flippedlr_img = np.rollaxis(flippedlr_img, 2, 0)
+                flippedlr_img = flippedlr_img.reshape(img_channels * img_size * img_size)
+                labels.append(int(row[0]))
+                images.append(flippedlr_img)
+
+                # flip up to down
+                flippedud_img = np.flipud(img)
+                flippedud_img = np.rollaxis(flippedud_img, 2, 0)
+                flippedud_img = flippedud_img.reshape(img_channels * img_size * img_size)
+                labels.append(int(row[0]))
+                images.append(flippedud_img)
+
+                # rotate by 90 degrees
+                rot_img = np.transpose(img, (1, 0, 2))
+                rot_img = np.rollaxis(rot_img, 2, 0)
+                rot_img = rot_img.reshape(img_channels * img_size * img_size)
+                labels.append(int(row[0]))
+                images.append(rot_img)
 
     labels = np.asarray(labels)
     images = np.asarray(images)
@@ -106,9 +130,9 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
 
     # read data
     log.log("Read Train Data")
-    X_train, Y_train = read_data(train_path)
+    X_train, Y_train = read_data(train_path, "train")
     log.log("Read Validation Data")
-    X_val, Y_val = read_data(val_path)
+    X_val, Y_val = read_data(val_path, "validation")
 
     # apply z score scaling
     mean, std = 0, 0
@@ -118,6 +142,7 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
 
     # initialize experiment params
     best_accu = 0
+    best_loss = 10000
     model_to_save = copy.deepcopy(model)
     log.log(header_template.format('Epoch', 'Trn_Loss', 'Val_Loss', 'Trn_Acc', ' Val_Acc'))
 
@@ -147,17 +172,16 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
             labels_vec = np.eye(NUM_CLASSES)[labels].transpose()
 
             # forward
-            if ind == 7232:
-                xxx = 1
             out = model.forward(batched_data)
-            pred = np.argmax(out, axis=0)
-            loss = model.loss_function(labels_vec)
+            loss = model.loss_function(batched_data, out, labels_vec)
 
             # compute gradients and make the optimizer step
             model.backward(batched_data, out, labels_vec)
             model.step()
 
             cum_loss += loss  # sum losses on all examples
+
+            pred = np.argmax(out, axis=0)
             correct += np.sum(labels == pred)
 
         # decay learning rate
@@ -179,18 +203,22 @@ def train_model(model, nn_params, log, exp, train_path, val_path, save_logs):
         log.log(metrics_to_print)
 
         # early stopping
-        if val_acc > best_accu:
+        was_best = False
+        if val_acc > best_accu or (val_acc == best_accu and val_loss < best_loss):
             model_to_save = copy.deepcopy(model)
             best_accu = val_acc
+            was_best = True
 
         # save weights norm
         net_norm = model.weights_norm() if epoch == 1 else np.concatenate((net_norm, model.weights_norm()), axis=0)
-        np.savetxt("./logs/" + exp + "/matrix_norms.txt", net_norm)
+        if save_logs:
+            np.savetxt("./logs/" + exp + "/matrix_norms.txt", net_norm)
 
-    # save best model
-    if save_logs:
-        with open("./logs/" + exp + "/best_model", 'wb') as best_model:
-            pickle.dump(model_to_save, best_model)
+        # save best model
+        if save_logs and was_best:
+            file_name = "/best_model" if nn_params["model"] == "FC" else "/best_model_AE"
+            with open("./logs/" + exp + file_name, 'wb') as best_model:
+                pickle.dump(model_to_save, best_model)
 
     return model, mean, std
 
@@ -225,7 +253,7 @@ def test_model(model, nn_params, exp, X, Y, save_logs, dataset="val", best_accu=
             # from labels to 1-hot
             labels = Y[ind:ind + batch_size].copy() - 1
             labels_vec = np.eye(NUM_CLASSES)[labels].transpose()
-            loss = model.loss_function(labels_vec)
+            loss = model.loss_function(batched_data, out, labels_vec)
 
             # calc loss and accuracy
             cum_loss += loss
@@ -247,11 +275,13 @@ def classifier(nn_params, log, exp, train_path, val_path, test_path, save_logs):
     model = Network.Fully_Connected(nn_params)
     if nn_params["load_model"] is not None:
         with open(nn_params["load_model"], 'rb') as pickle_file:
-            model = pickle.load(pickle_file)
+            model2 = pickle.load(pickle_file)
+        model.init_weights(model2.weights, model2.accum_grads, model2.sec_accum_grads)
+
     model, mean, std = train_model(model, nn_params, log, exp, train_path, val_path, save_logs)
 
     # test model
-    X_test, Y_test = read_data(test_path, True)
+    X_test, Y_test = read_data(test_path, "test")
 
     # apply z score scaling
     if nn_params["z_scale"]:
